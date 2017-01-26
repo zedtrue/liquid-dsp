@@ -72,6 +72,10 @@ AC_PROG_SED
 AC_PROG_GREP
 AC_PROG_INSTALL
 AC_PROG_RANLIB
+AN_MAKEVAR([AR], [AC_PROG_AR])
+AN_PROGRAM([ar], [AC_PROG_AR])
+AC_DEFUN([AC_PROG_AR], [AC_CHECK_TOOL(AR, ar, :)])
+AC_PROG_AR
 
 # Check for necessary libraries, library functions
 AC_FUNC_ERROR_AT_LINE
@@ -128,7 +132,10 @@ AC_CHECK_SIZEOF(unsigned int)
 # Try to guess the "native" architecture of the target to use with gcc's
 # -march or -mtune flags. Default success action adds $ax_cv_gcc_archflag to
 # $CFLAGS (sets to "unknown" on failure).
-AX_GCC_ARCHFLAG([no],[],[])
+#AX_GCC_ARCHFLAG([no],[],[])
+
+# get canonical target architecture
+AC_CANONICAL_TARGET
 
 # override SIMD
 if test "${enable_simdoverride+set}" = set; then
@@ -140,7 +147,6 @@ if test "${enable_simdoverride+set}" = set; then
     ARCH_OPTION=""
 else
     # Check canonical system
-    AC_CANONICAL_TARGET
     case $target_cpu in
     i386|i486|i586|i686|x86|x86_64)
         # check for MMX/SSE/AVX CPU extensions and intrinsics headers

@@ -29,6 +29,9 @@ extern "C" {
 #   define LIQUID_USE_COMPLEX_H 1
 #endif // __cplusplus
 
+// common headers
+#include <inttypes.h>
+
 //
 // Make sure the version and version number macros weren't defined by
 // some prevoiusly included header file.
@@ -229,7 +232,7 @@ void CBUFFER(_print)(CBUFFER() _q);                             \
 void CBUFFER(_debug_print)(CBUFFER() _q);                       \
                                                                 \
 /* clear internal buffer                                    */  \
-void CBUFFER(_clear)(CBUFFER() _q);                             \
+void CBUFFER(_reset)(CBUFFER() _q);                             \
                                                                 \
 /* get the number of elements currently in the buffer       */  \
 unsigned int CBUFFER(_size)(CBUFFER() _q);                      \
@@ -314,8 +317,8 @@ void WINDOW(_print)(WINDOW() _q);                               \
 /* print window object to stdout (with extra information)   */  \
 void WINDOW(_debug_print)(WINDOW() _q);                         \
                                                                 \
-/* clear/reset window object (initialize to zeros)          */  \
-void WINDOW(_clear)(WINDOW() _q);                               \
+/* reset window object (initialize to zeros)                */  \
+void WINDOW(_reset)(WINDOW() _q);                               \
                                                                 \
 /* read window buffer contents                              */  \
 /*  _q      : window object                                 */  \
@@ -378,7 +381,7 @@ void WDELAY(_destroy)(WDELAY() _q);                             \
 void WDELAY(_print)(WDELAY() _q);                               \
                                                                 \
 /* clear/reset state of object                              */  \
-void WDELAY(_clear)(WDELAY() _q);                               \
+void WDELAY(_reset)(WDELAY() _q);                               \
                                                                 \
 /* read delayed sample from delay buffer object             */  \
 /*  _q  :   delay buffer object                             */  \
@@ -417,10 +420,6 @@ typedef struct CHANNEL(_s) * CHANNEL();                         \
 /* create channel object with default parameters            */  \
 CHANNEL() CHANNEL(_create)(void);                               \
                                                                 \
-/* create channel object with particular delay              */  \
-/*  _m  :   resampling filter semi-length                   */  \
-CHANNEL() CHANNEL(_create_delay)(unsigned int _m);              \
-                                                                \
 /* destroy channel object, freeing all internal memory      */  \
 void CHANNEL(_destroy)(CHANNEL() _q);                           \
                                                                 \
@@ -434,14 +433,6 @@ void CHANNEL(_print)(CHANNEL() _q);                             \
 void CHANNEL(_add_awgn)(CHANNEL() _q,                           \
                         float     _noise_floor_dB,              \
                         float     _SNRdB);                      \
-                                                                \
-/* apply additive white Gausss noise impairment             */  \
-/*  _q              : channel object                        */  \
-/*  _delay          : resampling delay                      */  \
-/*  _rate           : resampling rate                       */  \
-void CHANNEL(_add_resamp)(CHANNEL() _q,                         \
-                          float     _delay,                     \
-                          float     _rate);                     \
                                                                 \
 /* apply carrier offset impairment                          */  \
 /*  _q          : channel object                            */  \
@@ -467,25 +458,89 @@ void CHANNEL(_add_shadowing)(CHANNEL()    _q,                   \
                              float        _sigma,               \
                              float        _fd);                 \
                                                                 \
-/* get nominal delay [samples]                              */  \
-unsigned int CHANNEL(_get_delay)(CHANNEL() _q);                 \
-                                                                \
-/* apply channel impairments on input array                 */  \
+/* apply channel impairments on single input sample         */  \
 /*  _q      : channel object                                */  \
-/*  _x      : input array [size: _nx x 1]                   */  \
-/*  _nx     : input array length                            */  \
-/*  _y      : output array                                  */  \
-/*  _ny     : output array length                           */  \
+/*  _x      : input sample                                  */  \
+/*  _y      : pointer to output sample                      */  \
 void CHANNEL(_execute)(CHANNEL()      _q,                       \
-                       TI *           _x,                       \
-                       unsigned int   _nx,                      \
-                       TO *           _y,                       \
-                       unsigned int * _ny);                     \
+                       TI             _x,                       \
+                       TO *           _y);                      \
+                                                                \
+/* apply channel impairments on block of samples            */  \
+/*  _q      : channel object                                */  \
+/*  _x      : input array [size: _n x 1]                    */  \
+/*  _n      : input array length                            */  \
+/*  _y      : output array [size: _n x 1]                   */  \
+void CHANNEL(_execute_block)(CHANNEL()      _q,                 \
+                             TI *           _x,                 \
+                             unsigned int   _n,                 \
+                             TO *           _y);                \
 
 LIQUID_CHANNEL_DEFINE_API(CHANNEL_MANGLE_CCCF,
                           liquid_float_complex,
                           liquid_float_complex,
                           liquid_float_complex)
+
+
+//
+// time-varying multi-path channel
+//
+#define TVMPCH_MANGLE_CCCF(name)    LIQUID_CONCAT(tvmpch_cccf,name)
+
+// large macro
+//   TVMPCH    : name-mangling macro
+//   TO         : output data type
+//   TC         : coefficients data type
+//   TI         : input data type
+#define LIQUID_TVMPCH_DEFINE_API(TVMPCH,TO,TC,TI)               \
+                                                                \
+typedef struct TVMPCH(_s) * TVMPCH();                           \
+                                                                \
+/* create channel object with default parameters            */  \
+/* create time-varying multi-path channel emulator object   */  \
+/*  _n      :   number of coefficients, _n > 0              */  \
+/*  _std    :   standard deviation                          */  \
+/*  _tau    :   coherence time                              */  \
+TVMPCH() TVMPCH(_create)(unsigned int _n,                       \
+                         float        _std,                     \
+                         float        _tau);                    \
+                                                                \
+/* destroy channel object, freeing all internal memory      */  \
+void TVMPCH(_destroy)(TVMPCH() _q);                             \
+                                                                \
+/* reset object                                             */  \
+void TVMPCH(_reset)(TVMPCH() _q);                               \
+                                                                \
+/* print channel object internals to standard output        */  \
+void TVMPCH(_print)(TVMPCH() _q);                               \
+                                                                \
+/* push sample into emulator                                */  \
+/*  _q      : channel object                                */  \
+/*  _x      : input sample                                  */  \
+void TVMPCH(_push)(TVMPCH() _q,                                 \
+                   TI       _x);                                \
+                                                                \
+/* compute output sample                                    */  \
+/*  _q      : channel object                                */  \
+/*  _y      : output sample                                 */  \
+void TVMPCH(_execute)(TVMPCH()      _q,                         \
+                      TO *          _y);                        \
+                                                                \
+/* apply channel impairments on a block of samples          */  \
+/*  _q      : channel object                                */  \
+/*  _x      : input array [size: _nx x 1]                   */  \
+/*  _nx     : input array length                            */  \
+/*  _y      : output array                                  */  \
+void TVMPCH(_execute_block)(TVMPCH()     _q,                    \
+                            TI *         _x,                    \
+                            unsigned int _nx,                   \
+                            TO *         _y);                   \
+
+LIQUID_TVMPCH_DEFINE_API(TVMPCH_MANGLE_CCCF,
+                         liquid_float_complex,
+                         liquid_float_complex,
+                         liquid_float_complex)
+
 
 //
 // MODULE : dotprod (vector dot product)
@@ -1021,28 +1076,24 @@ fec_scheme   packetizer_get_fec0       (packetizer _p);
 fec_scheme   packetizer_get_fec1       (packetizer _p);
 
 
-// packetizer_encode()
-//
 // Execute the packetizer on an input message
 //
 //  _p      :   packetizer object
 //  _msg    :   input message (uncoded bytes)
 //  _pkt    :   encoded output message
-void packetizer_encode(packetizer _p,
-                       unsigned char * _msg,
-                       unsigned char * _pkt);
+void packetizer_encode(packetizer            _p,
+                       const unsigned char * _msg,
+                       unsigned char *       _pkt);
 
-// packetizer_decode()
-//
 // Execute the packetizer to decode an input message, return validity
 // check of resulting data
 //
 //  _p      :   packetizer object
 //  _pkt    :   input message (coded bytes)
 //  _msg    :   decoded output message
-int  packetizer_decode(packetizer _p,
-                       unsigned char * _pkt,
-                       unsigned char * _msg);
+int  packetizer_decode(packetizer            _p,
+                       const unsigned char * _pkt,
+                       unsigned char *       _msg);
 
 // Execute the packetizer to decode an input message, return validity
 // check of resulting data
@@ -1050,9 +1101,9 @@ int  packetizer_decode(packetizer _p,
 //  _p      :   packetizer object
 //  _pkt    :   input message (coded soft bits)
 //  _msg    :   decoded output message
-int  packetizer_decode_soft(packetizer _p,
-                            unsigned char * _pkt,
-                            unsigned char * _msg);
+int packetizer_decode_soft(packetizer            _p,
+                           const unsigned char * _pkt,
+                           unsigned char *       _msg);
 
 
 //
@@ -1240,20 +1291,14 @@ LIQUID_FFT_DEFINE_API(LIQUID_FFT_MANGLE_FLOAT,float,liquid_float_complex)
 typedef struct SPGRAM(_s) * SPGRAM();                           \
                                                                 \
 /* create spgram object                                     */  \
-/*  _nfft       :   FFT size                                */  \
-/*  _window     :   window [size: _window_len x 1]          */  \
-/*  _window_len :   window length                           */  \
+/*  _nfft       : FFT size                                  */  \
+/*  _wtype      : window type, e.g. LIQUID_WINDOW_HAMMING   */  \
+/*  _window_len : window length, _window_len in [1,_nfft]   */  \
+/*  _delay      : delay between transforms, _delay > 0      */  \
 SPGRAM() SPGRAM(_create)(unsigned int _nfft,                    \
-                         float *      _window,                  \
-                         unsigned int _window_len);             \
-                                                                \
-/* create spgram object with Kaiser-Bessel window           */  \
-/*  _nfft       :   FFT size                                */  \
-/*  _window_len :   window length                           */  \
-/*  _beta       :   Kaiser-Bessel parameter (_beta > 0)     */  \
-SPGRAM() SPGRAM(_create_kaiser)(unsigned int _nfft,             \
-                                unsigned int _window_len,       \
-                                float        _beta);            \
+                         int          _wtype,                   \
+                         unsigned int _window_len,              \
+                         unsigned int _delay);                  \
                                                                 \
 /* create default spgram object (Kaiser-Bessel window)      */  \
 SPGRAM() SPGRAM(_create_default)(unsigned int _nfft);           \
@@ -1263,6 +1308,22 @@ void SPGRAM(_destroy)(SPGRAM() _q);                             \
                                                                 \
 /* resets the internal state of the spgram object           */  \
 void SPGRAM(_reset)(SPGRAM() _q);                               \
+                                                                \
+/* print internal state of the spgram object                */  \
+void SPGRAM(_print)(SPGRAM() _q);                               \
+                                                                \
+/* set methods                                              */  \
+int          SPGRAM(_set_alpha)(SPGRAM() _q, float _alpha);     \
+                                                                \
+/* access methods                                           */  \
+unsigned int SPGRAM(_get_nfft)                (SPGRAM() _q);    \
+unsigned int SPGRAM(_get_window_len)          (SPGRAM() _q);    \
+unsigned int SPGRAM(_get_delay)               (SPGRAM() _q);    \
+uint64_t     SPGRAM(_get_num_samples)         (SPGRAM() _q);    \
+uint64_t     SPGRAM(_get_num_samples_total)   (SPGRAM() _q);    \
+uint64_t     SPGRAM(_get_num_transforms)      (SPGRAM() _q);    \
+uint64_t     SPGRAM(_get_num_transforms_total)(SPGRAM() _q);    \
+float        SPGRAM(_get_alpha)               (SPGRAM() _q);    \
                                                                 \
 /* push a single sample into the spgram object              */  \
 /*  _q      :   spgram object                               */  \
@@ -1278,43 +1339,27 @@ void SPGRAM(_write)(SPGRAM()     _q,                            \
                     TI *         _x,                            \
                     unsigned int _n);                           \
                                                                 \
-/* compute spectral periodogram output (complex values)     */  \
-/* from current buffer contents                             */  \
-/*  _q      :   spgram object                               */  \
-/*  _X      :   output complex spectrum [size: _nfft x 1]   */  \
-void SPGRAM(_execute)(SPGRAM() _q,                              \
-                      TC *     _X);                             \
-                                                                \
 /* compute spectral periodogram output (fft-shifted values  */  \
 /* in dB) from current buffer contents                      */  \
 /*  _q      :   spgram object                               */  \
-/*  _X      :   output spectrum [size: _nfft x 1]           */  \
-void SPGRAM(_execute_psd)(SPGRAM() _q,                          \
-                          T *      _X);                         \
+/*  _X      :   output spectrum (dB) [size: _nfft x 1]      */  \
+void SPGRAM(_get_psd)(SPGRAM() _q,                              \
+                      T *      _X);                             \
                                                                 \
-/* accumulate power spectral density                        */  \
-/*  _q      :   spgram object                               */  \
-/*  _x      :   input buffer [size: _n x 1]                 */  \
-/*  _alpha  :   auto-regressive memory factor, [0,1]        */  \
-/*  _n      :   input buffer length                         */  \
-void SPGRAM(_accumulate_psd)(SPGRAM()       _q,                 \
-                             TI *           _x,                 \
-                             float          _alpha,             \
-                             unsigned int   _n);                \
+/* export gnuplot file                                      */  \
+/*  _q        : spgram object                               */  \
+/*  _filename : input buffer [size: _n x 1]                 */  \
+int SPGRAM(_export_gnuplot)(SPGRAM()     _q,                    \
+                            const char * _filename);            \
                                                                 \
-/* write accumulated psd                                    */  \
-/*  _q      :   spgram object                               */  \
-/*  _x      :   input buffer [size: _n x 1]                 */  \
-/*  _n      :   input buffer length [size: _nfft x 1]       */  \
-void SPGRAM(_write_accumulation)(SPGRAM() _q,                   \
-                                 T *      _x);                  \
+/* object-independent methods */                                \
                                                                 \
 /* estimate spectrum on input signal                        */  \
-/*  _q      :   spgram object                               */  \
+/*  _nfft   :   FFT size                                    */  \
 /*  _x      :   input signal [size: _n x 1]                 */  \
 /*  _n      :   input signal length                         */  \
 /*  _psd    :   output spectrum, [size: _nfft x 1]          */  \
-void SPGRAM(_estimate_psd)(SPGRAM()     _q,                     \
+void SPGRAM(_estimate_psd)(unsigned int _nfft,                  \
                            TI *         _x,                     \
                            unsigned int _n,                     \
                            T *          _psd);                  \
@@ -1356,11 +1401,17 @@ void ASGRAM(_reset)(ASGRAM() _q);                               \
                                                                 \
 /* set scale and offset for spectrogram                     */  \
 /*  _q      :   asgram object                               */  \
-/*  _offset :   signal offset level [dB]                    */  \
-/*  _scale  :   signal scale [dB]                           */  \
+/*  _ref    :   signal reference level [dB]                 */  \
+/*  _div    :   signal division [dB]                        */  \
 void ASGRAM(_set_scale)(ASGRAM() _q,                            \
-                        float    _offset,                       \
-                        float    _scale);                       \
+                        float    _ref,                          \
+                        float    _div);                         \
+                                                                \
+/* set display characters for output string                 */  \
+/*  _q      :   asgram object                               */  \
+/*  _ascii  :   10-character display, default: " .,-+*&NM#" */  \
+void ASGRAM(_set_display)(ASGRAM()     _q,                      \
+                          const char * _ascii);                 \
                                                                 \
 /* push a single sample into the asgram object              */  \
 /*  _q      :   asgram object                               */  \
@@ -2468,6 +2519,19 @@ void FIRPFB(_push)(FIRPFB() _q, TI _x);                         \
 void FIRPFB(_execute)(FIRPFB()     _q,                          \
                       unsigned int _i,                          \
                       TO *         _y);                         \
+                                                                \
+/* execute the filter on a block of input samples; the      */  \
+/* input and output buffers may be the same                 */  \
+/*  _q      : firpfb object                                 */  \
+/*  _i      : index of filter to use                        */  \
+/*  _x      : pointer to input array [size: _n x 1]         */  \
+/*  _n      : number of input, output samples               */  \
+/*  _y      : pointer to output array [size: _n x 1]        */  \
+void FIRPFB(_execute_block)(FIRPFB()     _q,                    \
+                            unsigned int _i,                    \
+                            TI *         _x,                    \
+                            unsigned int _n,                    \
+                            TO *         _y);                   \
 
 LIQUID_FIRPFB_DEFINE_API(FIRPFB_MANGLE_RRRF,
                          float,
@@ -2590,9 +2654,8 @@ IIRINTERP() IIRINTERP(_create)(unsigned int _M,                 \
 /* create decimator with default Butterworth prototype      */  \
 /*  _M      : decimation factor                             */  \
 /*  _order  : filter order                                  */  \
-IIRINTERP() IIRINTERP(_create_default)(                         \
-                unsigned int _M,                                \
-                unsigned int _order);                           \
+IIRINTERP() IIRINTERP(_create_default)(unsigned int _M,         \
+                                       unsigned int _order);    \
                                                                 \
 /* create interpolator from prototype                       */  \
 /*  _M      : interpolation factor                          */  \
@@ -2699,7 +2762,7 @@ void FIRDECIM(_destroy)(FIRDECIM() _q);                         \
 void FIRDECIM(_print)(FIRDECIM() _q);                           \
                                                                 \
 /* reset decimator object internal state                    */  \
-void FIRDECIM(_clear)(FIRDECIM() _q);                           \
+void FIRDECIM(_reset)(FIRDECIM() _q);                           \
                                                                 \
 /* execute decimator on _M input samples                    */  \
 /*  _q      : decimator object                              */  \
@@ -2758,9 +2821,8 @@ IIRDECIM() IIRDECIM(_create)(unsigned int _M,                   \
 /* create decimator with default Butterworth prototype      */  \
 /*  _M      : decimation factor                             */  \
 /*  _order  : filter order                                  */  \
-IIRDECIM() IIRDECIM(_create_default)(                           \
-                unsigned int _M,                                \
-                unsigned int _order);                           \
+IIRDECIM() IIRDECIM(_create_default)(unsigned int _M,           \
+                                     unsigned int _order);      \
                                                                 \
 /* create decimator from prototype                          */  \
 /*  _M      : decimation factor                             */  \
@@ -2865,7 +2927,7 @@ void RESAMP2(_destroy)(RESAMP2() _q);                           \
 void RESAMP2(_print)(RESAMP2() _q);                             \
                                                                 \
 /* reset internal buffer                                    */  \
-void RESAMP2(_clear)(RESAMP2() _q);                             \
+void RESAMP2(_reset)(RESAMP2() _q);                             \
                                                                 \
 /* get resampler filter delay (semi-length m)               */  \
 unsigned int RESAMP2(_get_delay)(RESAMP2() _q);                 \
@@ -3435,9 +3497,9 @@ unsigned int qpacketmodem_get_modscheme(qpacketmodem _q);
 //  _q          :   qpacketmodem object
 //  _payload    :   unencoded payload bytes
 //  _syms       :   encoded but un-modulated payload symbol indices
-void qpacketmodem_encode_syms(qpacketmodem    _q,
-                              unsigned char * _payload,
-                              unsigned char * _syms);
+void qpacketmodem_encode_syms(qpacketmodem          _q,
+                              const unsigned char * _payload,
+                              unsigned char *       _syms);
 
 // decode packet from demodulated frame symbol indices (hard-decision decoding)
 //  _q          :   qpacketmodem object
@@ -3460,7 +3522,7 @@ int qpacketmodem_decode_bits(qpacketmodem    _q,
 //  _payload    :   unencoded payload bytes
 //  _frame      :   encoded/modulated payload symbols
 void qpacketmodem_encode(qpacketmodem           _q,
-                         unsigned char *        _payload,
+                         const unsigned char *  _payload,
                          liquid_float_complex * _frame);
 
 // decode packet from modulated frame samples, returning flag if CRC passed
@@ -3648,10 +3710,10 @@ unsigned int flexframegen_getframelen(flexframegen _q);
 //  _header         :   frame header
 //  _payload        :   payload data [size: _payload_len x 1]
 //  _payload_len    :   payload data length
-void flexframegen_assemble(flexframegen    _q,
+void flexframegen_assemble(flexframegen          _q,
                            const unsigned char * _header,
                            const unsigned char * _payload,
-                           unsigned int    _payload_len);
+                           unsigned int          _payload_len);
 
 // write samples of assembled frame, two samples at a time, returning
 // '1' when frame is complete, '0' otherwise. Zeros will be written
@@ -3799,19 +3861,19 @@ typedef struct gmskframegen_s * gmskframegen;
 
 // create GMSK frame generator
 gmskframegen gmskframegen_create();
-void gmskframegen_destroy(gmskframegen _fg);
-int  gmskframegen_is_assembled(gmskframegen _fg);
-void gmskframegen_print(gmskframegen _fg);
-void gmskframegen_reset(gmskframegen _fg);
-void gmskframegen_assemble(gmskframegen    _fg,
-                           const unsigned char * _header,
-                           const unsigned char * _payload,
-                           unsigned int    _payload_len,
-                           crc_scheme      _check,
-                           fec_scheme      _fec0,
-                           fec_scheme      _fec1);
+void gmskframegen_destroy       (gmskframegen _q);
+int  gmskframegen_is_assembled  (gmskframegen _q);
+void gmskframegen_print         (gmskframegen _q);
+void gmskframegen_reset         (gmskframegen _q);
+void gmskframegen_assemble      (gmskframegen          _q,
+                                 const unsigned char * _header,
+                                 const unsigned char * _payload,
+                                 unsigned int          _payload_len,
+                                 crc_scheme            _check,
+                                 fec_scheme            _fec0,
+                                 fec_scheme            _fec1);
 unsigned int gmskframegen_getframelen(gmskframegen _q);
-int gmskframegen_write_samples(gmskframegen _fg,
+int gmskframegen_write_samples(gmskframegen _q,
                                liquid_float_complex * _y);
 
 
@@ -3892,21 +3954,23 @@ void ofdmflexframegen_setprops(ofdmflexframegen _q,
 //  _q              :   OFDM frame generator object
 unsigned int ofdmflexframegen_getframelen(ofdmflexframegen _q);
 
-// assemble a frame from an array of data
+// assemble a frame from an array of data (NULL pointers will use random data)
 //  _q              :   OFDM frame generator object
 //  _header         :   frame header [8 bytes]
 //  _payload        :   payload data [size: _payload_len x 1]
 //  _payload_len    :   payload data length
-void ofdmflexframegen_assemble(ofdmflexframegen _q,
+void ofdmflexframegen_assemble(ofdmflexframegen      _q,
                                const unsigned char * _header,
                                const unsigned char * _payload,
-                               unsigned int    _payload_len);
+                               unsigned int          _payload_len);
 
-// write symbols of assembled frame
+// write samples of assembled frame
 //  _q              :   OFDM frame generator object
-//  _buffer         :   output buffer [size: M+cp_len x 1]
-int ofdmflexframegen_writesymbol(ofdmflexframegen _q,
-                                 liquid_float_complex * _buffer);
+//  _buf            :   output buffer [size: _buf_len x 1]
+//  _buf_len        :   output buffer length
+int ofdmflexframegen_write(ofdmflexframegen       _q,
+                          liquid_float_complex * _buf,
+                          unsigned int           _buf_len);
 
 // 
 // OFDM flex frame synchronizer
@@ -4417,6 +4481,33 @@ float liquid_nchoosek(unsigned int _n, unsigned int _k);
 // Windowing functions
 //
 
+// Modulation schemes available
+#define LIQUID_WINDOW_NUM_FUNCTIONS (10)
+
+// prototypes
+typedef enum {
+    LIQUID_WINDOW_UNKNOWN=0,        // unknown/unsupported scheme
+
+    LIQUID_WINDOW_HAMMING,          // Hamming
+    LIQUID_WINDOW_HANN,             // Hann
+    LIQUID_WINDOW_BLACKMANHARRIS,   // Blackman-harris (4-term)
+    LIQUID_WINDOW_BLACKMANHARRIS7,  // Blackman-harris (7-term)
+    LIQUID_WINDOW_KAISER,           // Kaiser (beta factor unspecified)
+    LIQUID_WINDOW_FLATTOP,          // flat top (includes negative values)
+    LIQUID_WINDOW_TRIANGULAR,       // triangular
+    LIQUID_WINDOW_RCOSTAPER,        // raised-cosine taper (taper size unspecified)
+    LIQUID_WINDOW_KBD,              // Kaiser-Bessel derived window (beta factor unspecified)
+} liquid_window_type;
+
+// pretty names for window
+extern const char * liquid_window_str[LIQUID_WINDOW_NUM_FUNCTIONS][2];
+
+// Print compact list of existing and available windowing functions
+void liquid_print_windows();
+
+// returns modulation_scheme based on input string
+liquid_window_type liquid_getopt_str2window(const char * _str);
+
 // Kaiser-Bessel derived window (single sample)
 //  _n      :   index (0 <= _n < _N)
 //  _N      :   length of filter (must be even)
@@ -4436,23 +4527,46 @@ void liquid_kbd_window(unsigned int _n, float _beta, float * _w);
 //  _dt     :   fractional sample offset
 float kaiser(unsigned int _n,
              unsigned int _N,
-             float _beta,
-             float _dt);
+             float        _beta,
+             float        _dt);
 
 // Hamming window
 //  _n      :   window index
 //  _N      :   full window length
-float hamming(unsigned int _n, unsigned int _N);
+float hamming(unsigned int _n,
+              unsigned int _N);
 
 // Hann window
 //  _n      :   window index
 //  _N      :   full window length
-float hann(unsigned int _n, unsigned int _N);
+float hann(unsigned int _n,
+           unsigned int _N);
 
 // Blackman-harris window
 //  _n      :   window index
 //  _N      :   full window length
-float blackmanharris(unsigned int _n, unsigned int _N);
+float blackmanharris(unsigned int _n,
+                     unsigned int _N);
+
+// 7th order Blackman-harris window
+// _n			:	window index
+// _N			:	full window length
+float blackmanharris7(unsigned int _n,
+                      unsigned int _N);
+
+// Flat-top window
+// _n			:	window index
+// _N			:	full window length
+float flattop(unsigned int _n,
+              unsigned int _N);
+
+// Triangular window
+// _n			:	window index
+// _N			:	full window length
+// _L			:	triangle length, _L in {_N, _N+1, _N-1}
+float triangular(unsigned int _n,
+                 unsigned int _N,
+                 unsigned int _L);
 
 // raised-cosine tapering window
 //  _n      :   window index
@@ -5323,54 +5437,6 @@ void gmskdem_demodulate(gmskdem _q,
                         liquid_float_complex * _y,
                         unsigned int * _sym);
 
-// 
-// Analog frequency modulator
-//
-#define LIQUID_FREQMOD_MANGLE_FLOAT(name) LIQUID_CONCAT(freqmod,name)
-
-// Macro    :   FREQMOD (analog frequency modulator)
-//  FREQMOD :   name-mangling macro
-//  T       :   primitive data type
-//  TC      :   primitive data type (complex)
-#define LIQUID_FREQMOD_DEFINE_API(FREQMOD,T,TC)                 \
-                                                                \
-/* define struct pointer */                                     \
-typedef struct FREQMOD(_s) * FREQMOD();                         \
-                                                                \
-/* create freqmod object (frequency modulator)              */  \
-/*  _kf     :   modulation factor                           */  \
-FREQMOD() FREQMOD(_create)(float _kf);                          \
-                                                                \
-/* destroy freqmod object                                   */  \
-void FREQMOD(_destroy)(FREQMOD() _q);                           \
-                                                                \
-/* print freqmod object internals                           */  \
-void FREQMOD(_print)(FREQMOD() _q);                             \
-                                                                \
-/* reset state                                              */  \
-void FREQMOD(_reset)(FREQMOD() _q);                             \
-                                                                \
-/* modulate single sample                                   */  \
-/*  _q      :   frequency modulator object                  */  \
-/*  _m      :   message signal m(t)                         */  \
-/*  _s      :   complex baseband signal s(t)                */  \
-void FREQMOD(_modulate)(FREQMOD() _q,                           \
-                        T         _m,                           \
-                        TC *      _s);                          \
-                                                                \
-/* modulate block of samples                                */  \
-/*  _q      :   frequency modulator object                  */  \
-/*  _m      :   message signal m(t), [size: _n x 1]         */  \
-/*  _n      :   number of input, output samples             */  \
-/*  _s      :   complex baseband signal s(t) [size: _n x 1] */  \
-void FREQMOD(_modulate_block)(FREQMOD()    _q,                  \
-                              T *          _m,                  \
-                              unsigned int _n,                  \
-                              TC *         _s);                 \
-
-// define freqmod APIs
-LIQUID_FREQMOD_DEFINE_API(LIQUID_FREQMOD_MANGLE_FLOAT,float,liquid_float_complex)
-
 //
 // continuous phase frequency-shift keying (CP-FSK) modems
 //
@@ -5511,7 +5577,7 @@ void fskmod_modulate(fskmod                 _q,
 
 
 
-// CP-FSK demodulator
+// FSK demodulator
 typedef struct fskdem_s * fskdem;
 
 // create fskdem object (frequency demodulator)
@@ -5540,6 +5606,54 @@ unsigned int fskdem_demodulate(fskdem                 _q,
 // get demodulator frequency error
 float fskdem_get_frequency_error(fskdem _q);
 
+
+// 
+// Analog frequency modulator
+//
+#define LIQUID_FREQMOD_MANGLE_FLOAT(name) LIQUID_CONCAT(freqmod,name)
+
+// Macro    :   FREQMOD (analog frequency modulator)
+//  FREQMOD :   name-mangling macro
+//  T       :   primitive data type
+//  TC      :   primitive data type (complex)
+#define LIQUID_FREQMOD_DEFINE_API(FREQMOD,T,TC)                 \
+                                                                \
+/* define struct pointer */                                     \
+typedef struct FREQMOD(_s) * FREQMOD();                         \
+                                                                \
+/* create freqmod object (frequency modulator)              */  \
+/*  _kf     :   modulation factor                           */  \
+FREQMOD() FREQMOD(_create)(float _kf);                          \
+                                                                \
+/* destroy freqmod object                                   */  \
+void FREQMOD(_destroy)(FREQMOD() _q);                           \
+                                                                \
+/* print freqmod object internals                           */  \
+void FREQMOD(_print)(FREQMOD() _q);                             \
+                                                                \
+/* reset state                                              */  \
+void FREQMOD(_reset)(FREQMOD() _q);                             \
+                                                                \
+/* modulate single sample                                   */  \
+/*  _q      :   frequency modulator object                  */  \
+/*  _m      :   message signal m(t)                         */  \
+/*  _s      :   complex baseband signal s(t)                */  \
+void FREQMOD(_modulate)(FREQMOD() _q,                           \
+                        T         _m,                           \
+                        TC *      _s);                          \
+                                                                \
+/* modulate block of samples                                */  \
+/*  _q      :   frequency modulator object                  */  \
+/*  _m      :   message signal m(t), [size: _n x 1]         */  \
+/*  _n      :   number of input, output samples             */  \
+/*  _s      :   complex baseband signal s(t) [size: _n x 1] */  \
+void FREQMOD(_modulate_block)(FREQMOD()    _q,                  \
+                              T *          _m,                  \
+                              unsigned int _n,                  \
+                              TC *         _s);                 \
+
+// define freqmod APIs
+LIQUID_FREQMOD_DEFINE_API(LIQUID_FREQMOD_MANGLE_FLOAT,float,liquid_float_complex)
 
 // 
 // Analog frequency demodulator
@@ -5807,8 +5921,18 @@ LIQUID_FIRPFBCH2_DEFINE_API(FIRPFBCH2_MANGLE_CRCF,
 // initialize default subcarrier allocation
 //  _M      :   number of subcarriers
 //  _p      :   output subcarrier allocation array, [size: _M x 1]
-void ofdmframe_init_default_sctype(unsigned int _M,
+void ofdmframe_init_default_sctype(unsigned int    _M,
                                    unsigned char * _p);
+
+// initialize default subcarrier allocation
+//  _M      :   number of subcarriers
+//  _f0     :   lower frequency band, _f0 in [-0.5,0.5]
+//  _f1     :   upper frequency band, _f1 in [-0.5,0.5]
+//  _p      :   output subcarrier allocation array, [size: _M x 1]
+void ofdmframe_init_sctype_range(unsigned int    _M,
+                                 float           _f0,
+                                 float           _f1,
+                                 unsigned char * _p);
 
 // validate subcarrier type (count number of null, pilot, and data
 // subcarriers in the allocation)
@@ -6143,7 +6267,7 @@ void chromosome_print(chromosome _c);
 void chromosome_printf(chromosome _c);
 
 // clear chromosome (set traits to zero)
-void chromosome_clear(chromosome _c);
+void chromosome_reset(chromosome _c);
 
 // initialize chromosome on integer values
 void chromosome_init(chromosome _c,
@@ -6395,7 +6519,7 @@ bsequence bsequence_create(unsigned int num_bits);
 void bsequence_destroy(bsequence _bs);
 
 // Clear binary sequence (set to 0's)
-void bsequence_clear(bsequence _bs);
+void bsequence_reset(bsequence _bs);
 
 // initialize sequence on external array
 void bsequence_init(bsequence _bs,
